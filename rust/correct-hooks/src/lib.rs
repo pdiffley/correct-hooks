@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fmt::{self, Display, Formatter}, time::{SystemTime, UNIX_EPOCH}};
 
 use ed25519_dalek::{KEYPAIR_LENGTH, PUBLIC_KEY_LENGTH, SECRET_KEY_LENGTH, Signature, Signer, SigningKey, VerifyingKey};
+use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
@@ -29,7 +30,7 @@ struct PublicJwk {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct PublicVerifyingKey {
+pub struct PublicVerifyingKeySet {
   keys: Vec<PublicJwk>
 }
 
@@ -41,7 +42,6 @@ struct SignatureComponents {
   signed_at: u64,
   key_id: Uuid,
 }
-
 
 pub fn generate_secret_signing_key() -> SecretSigningKey {
   let key_id = Uuid::new_v4();
@@ -62,16 +62,20 @@ pub fn generate_secret_signing_key() -> SecretSigningKey {
   jwk
 }
 
+#[non_exhaustive]
+pub enum CreatePublicVerifyingKeySetError {
+  InvalidKeyFound,
+}
+
 // Vec of private keys to public key set json string
-pub fn create_public_verifying_key_set_json_string(private_signing_keys: &[SecretSigningKey]) -> String {
-  let mut public_jwks = PublicVerifyingKey { keys: vec![] };
-  for private_key in private_signing_keys {
+pub fn create_public_verifying_key_set_json_string(secret_signing_keys: &[SecretSigningKey]) -> Result<String, CreatePublicVerifyingKeySetError> {
+  let mut public_jwks = PublicVerifyingKeySet { keys: vec![] };
+  for private_key in secret_signing_keys {
     // Todo: validate key structure()
-    let public_key: PublicJwk = serde_json::from_str(&serde_json::to_string(&private_key).unwrap()).unwrap();
+    let public_key: PublicJwk = serde_json::from_str(&serde_json::to_string(&private_key).expect("Internal CorrectHooks error")).map_err(|_| CreatePublicVerifyingKeySetError::InvalidKeyFound)?;
     public_jwks.keys.push(public_key);
   }
-  // We know this unwrap will succeed
-  serde_json::to_string(&public_jwks).unwrap()
+  Ok(serde_json::to_string(&public_jwks).expect("Internal CorrectHooks error."))
 }
 
 pub struct SignWebhookOutput {
@@ -79,14 +83,17 @@ pub struct SignWebhookOutput {
   pub webhook_signature: String,
 }
 
-pub fn sign_webhook(recipient_id: &str, webhook_id: &str, method: &str, http_body: &[u8], signing_key: &SecretSigningKey) -> SignWebhookOutput {
+pub enum SignWebhookError {
+  InvalidMethod,
+  InvalidSigningKey,
+}
+
+pub fn sign_webhook(recipient_id: &str, webhook_id: &str, method: &str, http_body: &[u8], signing_key: &SecretSigningKey) -> Result<SignWebhookOutput, SignWebhookError> {
   if method != "POST" {
-    // Todo: return error
+    return Err(SignWebhookError::InvalidMethod);
   }
 
-  // Todo: validate key structure
-  let signing_key_jwk = &signing_key;
-  let key_id = signing_key_jwk.kid;
+  let key_id = signing_key.kid;
   let signed_at = seconds_since_unix_epoch();
 
   let signature_components = SignatureComponents {
@@ -96,20 +103,24 @@ pub fn sign_webhook(recipient_id: &str, webhook_id: &str, method: &str, http_bod
     key_id
   };
 
-  let signature_components_bytes = serde_json::to_string(&signature_components).unwrap().as_bytes().to_vec();
+  let signature_components_bytes = serde_json::to_string(&signature_components).expect("Internal CorrectHooks error.").as_bytes().to_vec();
   let signature_components_base64 = URL_SAFE_NO_PAD.encode(&signature_components_bytes);
   let signature_components_header_value = format!("{SIGNATURE_VERSION},{signature_components_base64}");
 
   // Todo: Convert panics into returnable errors
   // Todo: check that the key fails if the bytes are reversed.
-  let secret_key_bytes = URL_SAFE_NO_PAD.decode(&signing_key_jwk.d).unwrap();
-  assert!(secret_key_bytes.len() == SECRET_KEY_LENGTH);
-  let public_key_bytes = URL_SAFE_NO_PAD.decode(&signing_key_jwk.x).unwrap();
-  assert!(public_key_bytes.len() == PUBLIC_KEY_LENGTH);
+  let secret_key_bytes = URL_SAFE_NO_PAD.decode(&signing_key.d).map_err(|_| SignWebhookError::InvalidSigningKey)?;
+  if secret_key_bytes.len() != SECRET_KEY_LENGTH {
+    return Err(SignWebhookError::InvalidSigningKey);
+  }
+  let public_key_bytes = URL_SAFE_NO_PAD.decode(&signing_key.x).map_err(|_| SignWebhookError::InvalidSigningKey)?;
+  if public_key_bytes.len() != PUBLIC_KEY_LENGTH {
+    return Err(SignWebhookError::InvalidSigningKey);
+  }
   let mut signing_key_bytes = [0u8; KEYPAIR_LENGTH];
   signing_key_bytes[0..SECRET_KEY_LENGTH].copy_from_slice(&secret_key_bytes);
   signing_key_bytes[SECRET_KEY_LENGTH..KEYPAIR_LENGTH].copy_from_slice(&public_key_bytes);
-  let signing_key = SigningKey::from_keypair_bytes(&signing_key_bytes).unwrap();
+  let signing_key = SigningKey::from_keypair_bytes(&signing_key_bytes).map_err(|_| SignWebhookError::InvalidSigningKey)?;
 
   let signature_message = construct_signature_message(signature_components_bytes, http_body);
 
@@ -117,7 +128,7 @@ pub fn sign_webhook(recipient_id: &str, webhook_id: &str, method: &str, http_bod
   let signature_base64 = URL_SAFE_NO_PAD.encode(&signature.to_bytes());
   let signature_header_value = format!("{SIGNATURE_VERSION},{signature_base64}");
 
-  SignWebhookOutput { webhook_signature_components: signature_components_header_value, webhook_signature: signature_header_value }
+  Ok(SignWebhookOutput { webhook_signature_components: signature_components_header_value, webhook_signature: signature_header_value })
 }
 
 fn construct_signature_message(mut signature_components_bytes: Vec<u8>, http_body: &[u8]) -> Vec<u8> {
@@ -128,15 +139,45 @@ fn construct_signature_message(mut signature_components_bytes: Vec<u8>, http_bod
 pub struct Verifier {
   expected_recipient_id: String,
   signature_ttl_seconds: usize,
-  public_verifying_key_set: PublicVerifyingKey
+  public_verifying_key_set_url: String,
+  public_verifying_key_set: PublicVerifyingKeySet,
+  http_client: Client,
 }
 
 impl Verifier {
+  pub fn new(expected_recipient_id: String, signature_ttl_seconds: usize, public_verifying_key_set_url: String) -> Result<Verifier, serde_json::Error> {
+    let public_verifying_key_set = PublicVerifyingKeySet { keys: vec![] };
+    Ok(
+      Verifier { 
+        expected_recipient_id, 
+        signature_ttl_seconds, 
+        public_verifying_key_set_url,
+        public_verifying_key_set,
+        http_client: reqwest::Client::new(),
+      }
+    )
+  }
+
   // Checks that the webhook signature matches the request elements. That the webhook signature has not expired, and that the request is target to the intended recipient
-  // Todo: Add error return value
+  pub async fn verify_webhook(&mut self, method: &str, webhook_signature_components_header: &str, webhook_signature_header: &str, http_body: &[u8]) -> Result<VerifyWebhookOutput, VerifyWebhookError> {
+    let result = verify_webhook(method, webhook_signature_components_header, webhook_signature_header, http_body, &self.expected_recipient_id, self.signature_ttl_seconds, &self.public_verifying_key_set);
+    if let Err(VerifyWebhookError::PublicVerifyingKeyNotFound) = result {
+      let _ = self.refresh_jwks().await;
+      return verify_webhook(method, webhook_signature_components_header, webhook_signature_header, http_body, &self.expected_recipient_id, self.signature_ttl_seconds, &self.public_verifying_key_set);
+    }
+    return result
+  }
 
+  async fn refresh_jwks(&mut self) -> Result<(), String> {
+    let response = self.http_client.get(&self.public_verifying_key_set_url).send().await.map_err(|err| err.to_string())?;
+    if response.status() != StatusCode::OK {
+      return Err(format!("Failed to retrieve public verifying key set. Status code: {}", response.status()))
+    }
+    let key_set = response.json::<PublicVerifyingKeySet>().await.map_err(|err| err.to_string())?;
+    self.public_verifying_key_set = key_set;
+    Ok(())
+  }
 }
-
 
 pub struct VerifyWebhookOutput {
   pub webhook_id: String,
@@ -149,19 +190,14 @@ pub enum VerifyWebhookError {
   InvalidPublicVerifyingKey,
 }
 
-impl Display for VerifyWebhookError {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-    let error_message = match self {
-      VerifyWebhookError::PublicVerifyingKeyNotFound => "Public verifying key set does not contain a key matching the signature".to_string(),
-      VerifyWebhookError::InvalidSignature => "Invalid signature.".to_string(),
-      _ => "Unknown Error found".to_string(),
-    };
-		write!(f, "{error_message}")
-	}
+pub fn verify_webhook(
+  method: &str, webhook_signature_components_header: &str, webhook_signature_header: &str, http_body: &[u8], expected_recipient_id: &str, signature_ttl_seconds: usize, public_verifying_key_set: &PublicVerifyingKeySet) -> Result<VerifyWebhookOutput, VerifyWebhookError> {
+  let now = seconds_since_unix_epoch();
+  verify_webhook_with_time(method, webhook_signature_components_header, webhook_signature_header, http_body, expected_recipient_id, signature_ttl_seconds, public_verifying_key_set, now)
 }
 
-pub fn verify_webhook(
-  method: &str, webhook_signature_components_header: &str, webhook_signature_header: &str, http_body: &[u8], expected_recipient_id: &str, signature_ttl_seconds: usize, public_verifying_key_set: &PublicVerifyingKey) -> Result<VerifyWebhookOutput, VerifyWebhookError> {
+pub fn verify_webhook_with_time(
+  method: &str, webhook_signature_components_header: &str, webhook_signature_header: &str, http_body: &[u8], expected_recipient_id: &str, signature_ttl_seconds: usize, public_verifying_key_set: &PublicVerifyingKeySet, now: u64) -> Result<VerifyWebhookOutput, VerifyWebhookError> {
   if method != "POST" {
     return Err(VerifyWebhookError::InvalidSignature);
   }
@@ -191,7 +227,6 @@ pub fn verify_webhook(
     return Err(VerifyWebhookError::InvalidSignature);
   }
 
-  let now = seconds_since_unix_epoch();
   if now > (signature_components.signed_at + signature_ttl_seconds as u64) {
     return Err(VerifyWebhookError::InvalidSignature);
   }
@@ -204,7 +239,6 @@ pub fn verify_webhook(
     webhook_id: signature_components.webhook_id
   })
 }     
-
 
 fn split_versioned_header(header: &str) -> HashMap<String, String> {
   let mut split_headers = HashMap::new();
