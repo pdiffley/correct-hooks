@@ -14,13 +14,10 @@ use uuid::Uuid;
 pub mod test_server;
 
 pub const SIGNATURE_VERSION: &'static str = "v1";
-// Todo: check if catch_unwind is necessary in our code
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SecretSigningKey {
-  // Todo: confirm this serializes the way we would expect
   kid: Uuid,
-  alg: String,
   kty: String,
   crv: String,
   x: String,
@@ -30,7 +27,6 @@ pub struct SecretSigningKey {
 #[derive(Serialize, Deserialize, Clone)]
 struct PublicJwk {
   kid: Uuid,
-  alg: String,
   kty: String,
   crv: String,
   x: String,
@@ -57,7 +53,7 @@ pub enum CreatePublicVerifyingKeySetError {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct SignWebhookValue {
+pub struct SignWebhookReturnValue {
   pub webhook_signature_components: String,
   pub webhook_signature: String,
 }
@@ -70,7 +66,7 @@ pub enum SignWebhookError {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct VerifyWebhookValue {
+pub struct VerifyWebhookReturnValue {
   pub webhook_id: String,
 }
 
@@ -87,11 +83,8 @@ pub fn generate_secret_signing_key() -> SecretSigningKey {
   let signing_key: SigningKey = SigningKey::generate(&mut rand::rng());
   let secret_key = URL_SAFE_NO_PAD.encode(signing_key.as_bytes());
   let public_key = URL_SAFE_NO_PAD.encode(signing_key.verifying_key().as_bytes());
-  // See RFC 9864 for the alg field value and RFC 8037 for everything else
   let jwk = SecretSigningKey {
     kid: key_id,
-    // Todo: maybe remove the alg parameter
-    alg: "Ed25519".to_string(),
     kty: "OKP".to_string(),
     crv: "Ed25519".to_string(),
     x: public_key,
@@ -101,14 +94,11 @@ pub fn generate_secret_signing_key() -> SecretSigningKey {
   jwk
 }
 
-
-// Vec of private keys to public key set json string
 pub fn create_public_verifying_key_set(
   secret_signing_keys: &[SecretSigningKey],
 ) -> Result<PublicVerifyingKeySet, CreatePublicVerifyingKeySetError> {
   let mut public_jwks = PublicVerifyingKeySet { keys: vec![] };
   for private_key in secret_signing_keys {
-    // Todo: validate key structure()
     let public_key: PublicJwk = serde_json::from_str(
       &serde_json::to_string(&private_key).expect("Internal CorrectHooks error"),
     )
@@ -124,7 +114,7 @@ pub fn sign_webhook(
   method: &str,
   http_body: &[u8],
   secret_signing_key: &SecretSigningKey,
-) -> Result<SignWebhookValue, SignWebhookError> {
+) -> Result<SignWebhookReturnValue, SignWebhookError> {
   if method != "POST" {
     return Err(SignWebhookError::InvalidMethod);
   }
@@ -141,8 +131,6 @@ pub fn sign_webhook(
 
   let (signature_components_bytes, signature_components_header_value) = encode_signature_components_header(&signature_components);
 
-  // Todo: Convert panics into returnable errors
-  // Todo: check that the key fails if the bytes are reversed.
   let secret_key_bytes = URL_SAFE_NO_PAD
     .decode(&secret_signing_key.d)
     .map_err(|_| SignWebhookError::InvalidSigningKey)?;
@@ -167,7 +155,7 @@ pub fn sign_webhook(
   let signature_base64 = URL_SAFE_NO_PAD.encode(&signature.to_bytes());
   let signature_header_value = format!("{SIGNATURE_VERSION},{signature_base64}");
 
-  Ok(SignWebhookValue {
+  Ok(SignWebhookReturnValue {
     webhook_signature_components: signature_components_header_value,
     webhook_signature: signature_header_value,
   })
@@ -212,7 +200,7 @@ impl Verifier {
     webhook_signature_components_header: &str,
     webhook_signature_header: &str,
     http_body: &[u8],
-  ) -> Result<VerifyWebhookValue, VerifyWebhookError> {
+  ) -> Result<VerifyWebhookReturnValue, VerifyWebhookError> {
     let result = verify_webhook(
       method,
       webhook_signature_components_header,
@@ -267,7 +255,7 @@ pub fn verify_webhook(
   expected_recipient_id: &str,
   signature_ttl_seconds: usize,
   public_verifying_key_set: &PublicVerifyingKeySet,
-) -> Result<VerifyWebhookValue, VerifyWebhookError> {
+) -> Result<VerifyWebhookReturnValue, VerifyWebhookError> {
   let now = seconds_since_unix_epoch();
   verify_webhook_with_time(
     method,
@@ -290,7 +278,7 @@ pub fn verify_webhook_with_time(
   signature_ttl_seconds: usize,
   public_verifying_key_set: &PublicVerifyingKeySet,
   now: u64,
-) -> Result<VerifyWebhookValue, VerifyWebhookError> {
+) -> Result<VerifyWebhookReturnValue, VerifyWebhookError> {
   if method != "POST" {
     return Err(VerifyWebhookError::InvalidSignature);
   }
@@ -351,7 +339,7 @@ pub fn verify_webhook_with_time(
     return Err(VerifyWebhookError::InvalidSignature);
   }
 
-  Ok(VerifyWebhookValue {
+  Ok(VerifyWebhookReturnValue {
     webhook_id: signature_components.webhook_id,
   })
 }
