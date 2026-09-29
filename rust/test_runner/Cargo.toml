@@ -1,0 +1,15 @@
+[package]
+name = "test_runner"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+base64 = "0.23.1"
+reqwest = { version = "0.13.5", features = ["json", "http2"] }
+serde = { version = "1.0.229", features = ["derive"] }
+correct_hooks = { path = "../correct_hooks" }
+serde_json = "1.0.151"
+async-backtrace = "0.2.7"
+tokio = "1.53.1"
+rand = "0.10.3"
+uuid = { version = "1.26.1", features = ["v4"] }

@@ -1,0 +1,6 @@
+edition = "2021"
+unstable_features = true
+
+indent_style = "Block"
+tab_spaces = 2
+reorder_imports = true
