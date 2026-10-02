@@ -3,15 +3,13 @@ use std::{
   time::{SystemTime, UNIX_EPOCH},
 };
 
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE};
 use ed25519_dalek::{
   KEYPAIR_LENGTH, PUBLIC_KEY_LENGTH, SECRET_KEY_LENGTH, Signature, Signer, SigningKey, VerifyingKey,
 };
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-
-pub mod test_server;
 
 pub const SIGNATURE_VERSION: &'static str = "v1";
 
@@ -53,27 +51,30 @@ pub enum CreatePublicVerifyingKeySetError {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct SignWebhookReturnValue {
+#[serde(rename_all = "camelCase")]
+pub struct SignReturnValue {
   pub webhook_signature_components: String,
   pub webhook_signature: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub enum SignWebhookError {
+pub enum SignError {
   InvalidMethod,
   InvalidSigningKey,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct VerifyWebhookReturnValue {
+#[serde(rename_all = "camelCase")]
+pub struct VerifyReturnValue {
   pub webhook_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub enum VerifyWebhookError {
+pub enum VerifyError {
   PublicVerifyingKeyNotFound,
+  PublicVerifyingKeyRetrievalFailed,
   InvalidSignature,
   InvalidPublicVerifyingKey,
 }
@@ -81,8 +82,8 @@ pub enum VerifyWebhookError {
 pub fn generate_secret_signing_key() -> SecretSigningKey {
   let key_id = Uuid::new_v4();
   let signing_key: SigningKey = SigningKey::generate(&mut rand::rng());
-  let secret_key = URL_SAFE_NO_PAD.encode(signing_key.as_bytes());
-  let public_key = URL_SAFE_NO_PAD.encode(signing_key.verifying_key().as_bytes());
+  let secret_key = URL_SAFE.encode(signing_key.as_bytes());
+  let public_key = URL_SAFE.encode(signing_key.verifying_key().as_bytes());
   let jwk = SecretSigningKey {
     kid: key_id,
     kty: "OKP".to_string(),
@@ -99,8 +100,8 @@ pub fn create_public_verifying_key_set(
 ) -> Result<PublicVerifyingKeySet, CreatePublicVerifyingKeySetError> {
   let mut public_jwks = PublicVerifyingKeySet { keys: vec![] };
   for private_key in secret_signing_keys {
-    let public_key: PublicJwk = serde_json::from_str(
-      &serde_json::to_string(&private_key).expect("Internal CorrectHooks error"),
+    let public_key: PublicJwk = serde_json::from_slice(
+      &serde_json::to_vec(&private_key).expect("Internal CorrectHooks error"),
     )
     .map_err(|_| CreatePublicVerifyingKeySetError::InvalidKeyFound)?;
     public_jwks.keys.push(public_key);
@@ -108,15 +109,15 @@ pub fn create_public_verifying_key_set(
   Ok(public_jwks)
 }
 
-pub fn sign_webhook(
+pub fn sign(
   recipient_id: &str,
   webhook_id: &str,
   method: &str,
   http_body: &[u8],
   secret_signing_key: &SecretSigningKey,
-) -> Result<SignWebhookReturnValue, SignWebhookError> {
+) -> Result<SignReturnValue, SignError> {
   if method != "POST" {
-    return Err(SignWebhookError::InvalidMethod);
+    return Err(SignError::InvalidMethod);
   }
 
   let key_id = secret_signing_key.kid;
@@ -129,44 +130,37 @@ pub fn sign_webhook(
     key_id,
   };
 
-  let (signature_components_bytes, signature_components_header_value) = encode_signature_components_header(&signature_components);
+  let (signature_components_bytes, signature_components_header_value) =
+    encode_signature_components_header(&signature_components);
 
-  let secret_key_bytes = URL_SAFE_NO_PAD
+  let secret_key_bytes = URL_SAFE
     .decode(&secret_signing_key.d)
-    .map_err(|_| SignWebhookError::InvalidSigningKey)?;
+    .map_err(|_| SignError::InvalidSigningKey)?;
   if secret_key_bytes.len() != SECRET_KEY_LENGTH {
-    return Err(SignWebhookError::InvalidSigningKey);
+    return Err(SignError::InvalidSigningKey);
   }
-  let public_key_bytes = URL_SAFE_NO_PAD
+  let public_key_bytes = URL_SAFE
     .decode(&secret_signing_key.x)
-    .map_err(|_| SignWebhookError::InvalidSigningKey)?;
+    .map_err(|_| SignError::InvalidSigningKey)?;
   if public_key_bytes.len() != PUBLIC_KEY_LENGTH {
-    return Err(SignWebhookError::InvalidSigningKey);
+    return Err(SignError::InvalidSigningKey);
   }
   let mut signing_key_bytes = [0u8; KEYPAIR_LENGTH];
   signing_key_bytes[0..SECRET_KEY_LENGTH].copy_from_slice(&secret_key_bytes);
   signing_key_bytes[SECRET_KEY_LENGTH..KEYPAIR_LENGTH].copy_from_slice(&public_key_bytes);
-  let signing_key = SigningKey::from_keypair_bytes(&signing_key_bytes)
-    .map_err(|_| SignWebhookError::InvalidSigningKey)?;
+  let signing_key =
+    SigningKey::from_keypair_bytes(&signing_key_bytes).map_err(|_| SignError::InvalidSigningKey)?;
 
   let signature_message = construct_signature_message(signature_components_bytes, http_body);
 
   let signature = signing_key.sign(&signature_message);
-  let signature_base64 = URL_SAFE_NO_PAD.encode(&signature.to_bytes());
+  let signature_base64 = URL_SAFE.encode(&signature.to_bytes());
   let signature_header_value = format!("{SIGNATURE_VERSION},{signature_base64}");
 
-  Ok(SignWebhookReturnValue {
+  Ok(SignReturnValue {
     webhook_signature_components: signature_components_header_value,
     webhook_signature: signature_header_value,
   })
-}
-
-fn construct_signature_message(
-  mut signature_components_bytes: Vec<u8>,
-  http_body: &[u8],
-) -> Vec<u8> {
-  signature_components_bytes.extend(http_body);
-  signature_components_bytes
 }
 
 pub struct Verifier {
@@ -194,14 +188,14 @@ impl Verifier {
   }
 
   // Checks that the webhook signature matches the request elements. That the webhook signature has not expired, and that the request is target to the intended recipient
-  pub async fn verify_webhook(
+  pub async fn verify(
     &mut self,
     method: &str,
     webhook_signature_components_header: &str,
     webhook_signature_header: &str,
     http_body: &[u8],
-  ) -> Result<VerifyWebhookReturnValue, VerifyWebhookError> {
-    let result = verify_webhook(
+  ) -> Result<VerifyReturnValue, VerifyError> {
+    let result = verify(
       method,
       webhook_signature_components_header,
       webhook_signature_header,
@@ -210,9 +204,11 @@ impl Verifier {
       self.signature_ttl_seconds,
       &self.public_verifying_key_set,
     );
-    if let Err(VerifyWebhookError::PublicVerifyingKeyNotFound) = result {
-      let _ = self.refresh_jwks().await;
-      return verify_webhook(
+    if let Err(VerifyError::PublicVerifyingKeyNotFound) = result {
+      if self.refresh_jwks().await.is_err() {
+        return Err(VerifyError::PublicVerifyingKeyRetrievalFailed);
+      }
+      return verify(
         method,
         webhook_signature_components_header,
         webhook_signature_header,
@@ -225,29 +221,26 @@ impl Verifier {
     return result;
   }
 
-  async fn refresh_jwks(&mut self) -> Result<(), String> {
+  async fn refresh_jwks(&mut self) -> Result<(), VerifyError> {
     let response = self
       .http_client
       .get(&self.public_verifying_key_set_url)
       .send()
       .await
-      .map_err(|err| err.to_string())?;
+      .map_err(|_| VerifyError::PublicVerifyingKeyRetrievalFailed)?;
     if response.status() != StatusCode::OK {
-      return Err(format!(
-        "Failed to retrieve public verifying key set. Status code: {}",
-        response.status()
-      ));
+      return Err(VerifyError::PublicVerifyingKeyRetrievalFailed);
     }
     let key_set = response
       .json::<PublicVerifyingKeySet>()
       .await
-      .map_err(|err| err.to_string())?;
+      .map_err(|_| VerifyError::PublicVerifyingKeyRetrievalFailed)?;
     self.public_verifying_key_set = key_set;
     Ok(())
   }
 }
 
-pub fn verify_webhook(
+pub fn verify(
   method: &str,
   webhook_signature_components_header: &str,
   webhook_signature_header: &str,
@@ -255,9 +248,9 @@ pub fn verify_webhook(
   expected_recipient_id: &str,
   signature_ttl_seconds: usize,
   public_verifying_key_set: &PublicVerifyingKeySet,
-) -> Result<VerifyWebhookReturnValue, VerifyWebhookError> {
+) -> Result<VerifyReturnValue, VerifyError> {
   let now = seconds_since_unix_epoch();
-  verify_webhook_with_time(
+  verify_with_time(
     method,
     webhook_signature_components_header,
     webhook_signature_header,
@@ -269,7 +262,7 @@ pub fn verify_webhook(
   )
 }
 
-pub fn verify_webhook_with_time(
+pub fn verify_with_time(
   method: &str,
   webhook_signature_components_header: &str,
   webhook_signature_header: &str,
@@ -278,82 +271,94 @@ pub fn verify_webhook_with_time(
   signature_ttl_seconds: usize,
   public_verifying_key_set: &PublicVerifyingKeySet,
   now: u64,
-) -> Result<VerifyWebhookReturnValue, VerifyWebhookError> {
+) -> Result<VerifyReturnValue, VerifyError> {
   if method != "POST" {
-    return Err(VerifyWebhookError::InvalidSignature);
+    return Err(VerifyError::InvalidSignature);
   }
-
+  // Todo: Make repo format and fix script
   let signature_components_encoded = split_versioned_header(webhook_signature_components_header)
     .get(SIGNATURE_VERSION)
-    .ok_or(VerifyWebhookError::InvalidSignature)?
+    .ok_or(VerifyError::InvalidSignature)?
     .clone();
-  let signature_components_bytes = URL_SAFE_NO_PAD
+  let signature_components_bytes = URL_SAFE
     .decode(signature_components_encoded)
-    .map_err(|_| VerifyWebhookError::InvalidSignature)?;
-  let signature_components_str = String::from_utf8(signature_components_bytes.clone())
-    .map_err(|_| VerifyWebhookError::InvalidSignature)?;
-  let signature_components = serde_json::from_str::<SignatureComponents>(&signature_components_str)
-    .map_err(|_| VerifyWebhookError::InvalidSignature)?;
+    .map_err(|_| VerifyError::InvalidSignature)?;
+  let signature_components =
+    serde_json::from_slice::<SignatureComponents>(&signature_components_bytes)
+      .map_err(|_| VerifyError::InvalidSignature)?;
 
   let verifying_key_jwk = public_verifying_key_set
     .keys
     .iter()
     .find(|x| x.kid == signature_components.key_id)
-    .ok_or(VerifyWebhookError::PublicVerifyingKeyNotFound)?;
-  let public_key_bytes = URL_SAFE_NO_PAD
+    .ok_or(VerifyError::PublicVerifyingKeyNotFound)?;
+  let public_key_bytes = URL_SAFE
     .decode(&verifying_key_jwk.x)
-    .map_err(|_| VerifyWebhookError::InvalidPublicVerifyingKey)?;
+    .map_err(|_| VerifyError::InvalidPublicVerifyingKey)?;
   if public_key_bytes.len() != PUBLIC_KEY_LENGTH {
-    return Err(VerifyWebhookError::InvalidPublicVerifyingKey);
+    return Err(VerifyError::InvalidPublicVerifyingKey);
   };
   let mut verifying_key_bytes = [0u8; PUBLIC_KEY_LENGTH];
   verifying_key_bytes[0..PUBLIC_KEY_LENGTH].copy_from_slice(&public_key_bytes);
   let verifying_key = VerifyingKey::from_bytes(&verifying_key_bytes)
-    .map_err(|_| VerifyWebhookError::InvalidPublicVerifyingKey)?;
+    .map_err(|_| VerifyError::InvalidPublicVerifyingKey)?;
 
   let signature_message = construct_signature_message(signature_components_bytes, http_body);
 
   let signature_encoded = split_versioned_header(webhook_signature_header)
     .get(SIGNATURE_VERSION)
     .cloned()
-    .ok_or(VerifyWebhookError::InvalidSignature)?
+    .ok_or(VerifyError::InvalidSignature)?
     .clone();
-  let signature_bytes = URL_SAFE_NO_PAD
+  let signature_bytes = URL_SAFE
     .decode(signature_encoded)
-    .map_err(|_| VerifyWebhookError::InvalidSignature)?;
+    .map_err(|_| VerifyError::InvalidSignature)?;
   let signature =
-    Signature::from_slice(&signature_bytes).map_err(|_| VerifyWebhookError::InvalidSignature)?;
+    Signature::from_slice(&signature_bytes).map_err(|_| VerifyError::InvalidSignature)?;
 
   let signature_is_valid = verifying_key
     .verify_strict(&signature_message, &signature)
     .is_ok();
   if !signature_is_valid {
-    return Err(VerifyWebhookError::InvalidSignature);
+    return Err(VerifyError::InvalidSignature);
   }
 
   if now > (signature_components.signed_at + signature_ttl_seconds as u64) {
-    return Err(VerifyWebhookError::InvalidSignature);
+    return Err(VerifyError::InvalidSignature);
   }
 
   if expected_recipient_id != signature_components.recipient_id {
-    return Err(VerifyWebhookError::InvalidSignature);
+    return Err(VerifyError::InvalidSignature);
   }
 
-  Ok(VerifyWebhookReturnValue {
+  Ok(VerifyReturnValue {
     webhook_id: signature_components.webhook_id,
   })
 }
 
-pub fn encode_signature_components_header(signature_components: &SignatureComponents) -> (Vec<u8>, String) {
+pub fn encode_signature_components_header(
+  signature_components: &SignatureComponents,
+) -> (Vec<u8>, String) {
   let signature_components_bytes = serde_json::to_string(signature_components)
     .expect("Internal CorrectHooks error.")
     .as_bytes()
     .to_vec();
-  let signature_components_base64 = URL_SAFE_NO_PAD.encode(&signature_components_bytes);
+  let signature_components_base64 = URL_SAFE.encode(&signature_components_bytes);
   let signature_components_header_value =
     format!("{SIGNATURE_VERSION},{signature_components_base64}");
 
-  (signature_components_bytes, signature_components_header_value)
+  (
+    signature_components_bytes,
+    signature_components_header_value,
+  )
+}
+
+fn construct_signature_message(
+  mut signature_components_bytes: Vec<u8>,
+  http_body: &[u8],
+) -> Vec<u8> {
+  signature_components_bytes.extend(http_body);
+  signature_components_bytes
 }
 
 pub fn split_versioned_header(header: &str) -> HashMap<String, String> {

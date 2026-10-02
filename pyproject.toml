@@ -1,0 +1,13 @@
+[tool.uv.workspace]
+members = [
+    "python/correct_hooks",
+    "python/test_server",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.10",
+]
+
+[tool.ruff]
+indent-width = 2
