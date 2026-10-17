@@ -96,6 +96,7 @@ impl CorrectHooksTestClient {
       .json(&SignRequest {
         target_url: args.target_url.to_string(),
         webhook_id: args.webhook_id.to_string(),
+        recipient_id: args.recipient_id.to_string(),
         method: args.method.to_string(),
         body: encode_base64(args.request_body),
         signing_key: args.secret_signing_key.clone(),
@@ -121,6 +122,7 @@ impl CorrectHooksTestClient {
   pub async fn verify_with_time(
     &self,
     args: VerifyArgs<'_>,
+    recipient_id: Uuid,
     signature_ttl_seconds: u64,
     public_verifying_key_set: &PublicVerifyingKeySet,
     now: u64,
@@ -133,6 +135,7 @@ impl CorrectHooksTestClient {
       ))
       .timeout(Duration::from_secs(2))
       .json(&VerifyWithTimeRequest {
+        recipient_id: recipient_id.to_string(),
         target_url: args.target_url.to_string(),
         method: args.method.to_string(),
         correct_hooks_signature_components: args.correct_hooks_signature_components.to_string(),
@@ -183,6 +186,7 @@ impl CorrectHooksTestClient {
   pub async fn register_new_verifier(
     &self,
     verifier_id: Uuid,
+    recipient_id: Uuid,
     public_verifying_key_set_id: Uuid,
     signature_ttl_seconds: Option<u64>,
     public_verifying_key_set_ttl_seconds: Option<u64>,
@@ -195,6 +199,7 @@ impl CorrectHooksTestClient {
       ))
       .timeout(Duration::from_secs(2))
       .json(&VerifierConfig {
+        recipient_id,
         public_verifying_key_set_url: format!(
           "http://localhost:{}/get_public_verifying_key_set/{}",
           self.test_server_port, public_verifying_key_set_id

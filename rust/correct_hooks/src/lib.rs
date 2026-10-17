@@ -49,8 +49,6 @@ pub struct PublicVerifyingKeySet {
 #[serde(rename_all = "camelCase")]
 pub struct SignatureComponents {
   pub webhook_id: Uuid,
-  pub target_url: Url,
-  pub method: String,
   pub key_id: Uuid,
   pub signed_at: u64,
 }
@@ -70,6 +68,10 @@ pub struct SignArgs<'a> {
   /// This id should be unique for the event triggering the webhook, and should
   /// be reused for any delivery retries.
   pub webhook_id: Uuid,
+  /// The webhook consumer's id.
+  ///
+  /// This id must be provided by the webhook producer, and not taken as an input from the webhook consumer
+  pub recipient_id: Uuid, 
   /// The url the webhook is being sent to.
   ///
   /// Must be the exact url string provided by the webhook consumer.
@@ -199,8 +201,9 @@ pub fn create_public_verifying_key_set(
 /// between retried delivery attempts.
 pub fn sign(args: SignArgs<'_>) -> Result<SignatureData, SignError> {
   let SignArgs {
-    target_url,
     webhook_id,
+    recipient_id,
+    target_url,
     method,
     request_body,
     secret_signing_key,
@@ -208,7 +211,11 @@ pub fn sign(args: SignArgs<'_>) -> Result<SignatureData, SignError> {
 
   if webhook_id.get_version_num() != 4 {
     return Err(SignError::InvalidArgs)
-  } 
+  }
+
+  if recipient_id.get_version_num() != 4 {
+    return Err(SignError::InvalidArgs)
+  }
 
   if !is_valid_http_method(method) {
     return Err(SignError::InvalidArgs);
@@ -218,9 +225,7 @@ pub fn sign(args: SignArgs<'_>) -> Result<SignatureData, SignError> {
   let signed_at = seconds_since_unix_epoch();
 
   let signature_components = SignatureComponents {
-    webhook_id: webhook_id,
-    target_url: target_url.clone(),
-    method: method.to_string(),
+    webhook_id,
     key_id,
     signed_at,
   };
@@ -244,7 +249,7 @@ pub fn sign(args: SignArgs<'_>) -> Result<SignatureData, SignError> {
   let signing_key =
     SigningKey::from_keypair_bytes(&signing_key_bytes).map_err(|_| SignError::InvalidSigningKey)?;
 
-  let signature_message = construct_signature_message(&signature_components, request_body);
+  let signature_message = construct_signature_message(&signature_components, recipient_id, target_url, method, request_body);
 
   let signature = signing_key.sign(&signature_message);
   let signature_base64 = encode_base64(&signature.to_bytes());
@@ -260,6 +265,11 @@ pub fn sign(args: SignArgs<'_>) -> Result<SignatureData, SignError> {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct VerifierConfig {
+  /// Your webhook consumer id. 
+  ///
+  /// This id must be provided to you in advance by the webhook producer and should never be extracted
+  /// from a webhook request.
+  pub recipient_id: Uuid,
   /// The url serving the webhook provider's verfiying key set.
   ///
   /// The webhook provider should give you this url.
@@ -292,6 +302,7 @@ struct PublicVerifyingKeySetData {
 /// You do not have to wrap the [`Verifier`] in an [`Rc`](std::rc::Rc) or [`Arc`] to reuse it because it already uses [`Arc`]s internally.
 #[derive(Clone, Debug)]
 pub struct Verifier {
+  recipient_id: Uuid,
   public_verifying_key_set_url: String,
   signature_ttl_seconds: u64,
   public_verifying_key_set_ttl_seconds: u64,
@@ -314,6 +325,7 @@ impl Verifier {
     )));
     let public_verifying_key_set_refresh_lock = Arc::new(tokio::sync::Mutex::new(()));
     Verifier {
+      recipient_id: config.recipient_id,
       public_verifying_key_set_url: config.public_verifying_key_set_url,
       signature_ttl_seconds: config
         .signature_ttl_seconds
@@ -356,6 +368,7 @@ impl Verifier {
     let public_verifying_key_set = self.current_key_set();
     let result = verify_with_time(
       args,
+      self.recipient_id,
       self.signature_ttl_seconds,
       &public_verifying_key_set.key_set,
       now,
@@ -371,6 +384,7 @@ impl Verifier {
       let public_verifying_key_set = self.current_key_set();
       return verify_with_time(
         args,
+        self.recipient_id,
         self.signature_ttl_seconds,
         &public_verifying_key_set.key_set,
         now,
@@ -418,6 +432,7 @@ impl Verifier {
 /// This function is only public for internal testing purposes and will be made private in a future version of this library.
 pub fn verify_with_time(
   args: VerifyArgs<'_>,
+  recipient_id: Uuid,
   signature_ttl_seconds: u64,
   public_verifying_key_set: &PublicVerifyingKeySet,
   now: u64,
@@ -436,6 +451,12 @@ pub fn verify_with_time(
   let signature_components = decode_signature_components(&signature_components_encoded)
     .map_err(|_| VerifyError::InvalidSignature)?;
 
+  if now > (signature_components.signed_at + signature_ttl_seconds)
+    || now + signature_ttl_seconds < signature_components.signed_at
+  {
+    return Err(VerifyError::InvalidSignature);
+  }
+
   let verifying_key_jwk = public_verifying_key_set
     .keys
     .iter()
@@ -451,7 +472,7 @@ pub fn verify_with_time(
   let verifying_key = VerifyingKey::from_bytes(&verifying_key_bytes)
     .map_err(|_| VerifyError::InvalidPublicVerifyingKey)?;
 
-  let signature_message = construct_signature_message(&signature_components, request_body);
+  let signature_message = construct_signature_message(&signature_components, recipient_id, target_url, method, request_body);
 
   let signature_encoded = split_versioned_header(correct_hooks_signature)
     .get(SIGNATURE_VERSION)
@@ -470,20 +491,6 @@ pub fn verify_with_time(
     return Err(VerifyError::InvalidSignature);
   }
 
-  if target_url != &signature_components.target_url {
-    return Err(VerifyError::InvalidSignature);
-  }
-
-  if method != signature_components.method {
-    return Err(VerifyError::InvalidSignature);
-  }
-
-  if now > (signature_components.signed_at + signature_ttl_seconds)
-    || now + signature_ttl_seconds < signature_components.signed_at
-  {
-    return Err(VerifyError::InvalidSignature);
-  }
-
   Ok(VerifiedData {
     webhook_id: signature_components.webhook_id,
   })
@@ -491,10 +498,15 @@ pub fn verify_with_time(
 
 fn construct_signature_message(
   signature_components: &SignatureComponents,
+  recipient_id: Uuid,
+  target_url: &Url,
+  method: &str,
   request_body: &[u8],
 ) -> Vec<u8> {
   let encoded_signature_components = encode_signature_components(signature_components);
-  let mut signature_message = format!("{encoded_signature_components}.")
+  let recipient_id_base64 = encode_base64_from_string(&recipient_id.to_string());
+  let target_url_base64 = encode_base64_from_string(&target_url.to_string());
+  let mut signature_message = format!("{encoded_signature_components}.{recipient_id_base64}.{target_url_base64},{method}.")
     .bytes()
     .collect::<Vec<_>>();
   signature_message.extend(request_body);
@@ -526,13 +538,11 @@ pub fn split_versioned_header(header: &str) -> HashMap<String, String> {
 /// This function is only public for internal testing purposes and will be made private in a future version of this library.
 pub fn encode_signature_components(signature_components: &SignatureComponents) -> String {
   let webhook_id_base64 = encode_base64_from_string(&signature_components.webhook_id.to_string());
-  let target_url_base64 = encode_base64_from_string(signature_components.target_url.as_str());
-  let method_base64 = encode_base64_from_string(&signature_components.method);
   let key_id_base64 = encode_base64_from_string(&signature_components.key_id.to_string());
   let signed_at_base64 = encode_base64_from_string(&signature_components.signed_at.to_string());
   let encoded_signature_components = format!(
-    "{}.{}.{}.{}.{}",
-    webhook_id_base64, target_url_base64, method_base64, key_id_base64, signed_at_base64
+    "{}.{}.{}",
+    webhook_id_base64, key_id_base64, signed_at_base64
   );
   encoded_signature_components
 }
@@ -542,27 +552,21 @@ pub fn decode_signature_components(
   encoded_signature_components: &str,
 ) -> Result<SignatureComponents, String> {
   let components = encoded_signature_components.split('.').collect::<Vec<_>>();
-  if components.len() != 5 {
+  if components.len() != 3 {
     return Err("Invalid component count".to_owned());
   }
   let webhook_id = decode_base64_to_string(components[0])?
     .parse()
     .map_err(|_| "invalid webhook_id".to_owned())?;
-  let target_url = decode_base64_to_string(components[1])?
-    .parse()
-    .map_err(|_| "invalid target_url".to_owned())?;
-  let method = decode_base64_to_string(components[2])?;
-  let key_id = decode_base64_to_string(components[3])?
+  let key_id = decode_base64_to_string(components[1])?
     .parse()
     .map_err(|_| "invalid key_id".to_owned())?;
-  let signed_at = decode_base64_to_string(components[4])?
+  let signed_at = decode_base64_to_string(components[2])?
     .parse()
     .map_err(|_| "invalid timestamp".to_owned())?;
 
   let result = Ok(SignatureComponents {
     webhook_id,
-    target_url,
-    method,
     key_id,
     signed_at,
   });

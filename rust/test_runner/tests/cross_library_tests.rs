@@ -7,6 +7,7 @@ use test_runner::test_client::{CorrectHooksTestClient, decode_signature_componen
 #[tokio::test]
 #[async_backtrace::framed]
 async fn generate_key_test() {
+  let recipient_id = "9f1c2a4e-3b7d-4c58-a6e1-52d8b0c47f93".parse().unwrap();
   let target_url = "https://adomain.com/a/path".parse().unwrap();
   let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
@@ -22,6 +23,7 @@ async fn generate_key_test() {
   let webhook_headers = sign(SignArgs {
     target_url: &target_url,
     webhook_id,
+    recipient_id,
     method,
     request_body: &request_body,
     secret_signing_key: &signing_key,
@@ -39,6 +41,7 @@ async fn generate_key_test() {
       correct_hooks_signature: &webhook_headers.correct_hooks_signature,
       request_body: &request_body,
     },
+    recipient_id,
     signature_ttl_seconds,
     &public_key_set,
     signature_components.signed_at + 1,
@@ -51,6 +54,7 @@ async fn generate_key_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn create_public_verifying_key_set_test() {
+  let recipient_id = "9f1c2a4e-3b7d-4c58-a6e1-52d8b0c47f93".parse().unwrap();
   let target_url = "https://adomain.com/a/path".parse().unwrap();
   let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
@@ -69,6 +73,7 @@ async fn create_public_verifying_key_set_test() {
   let webhook_headers = sign(SignArgs {
     target_url: &target_url,
     webhook_id,
+    recipient_id,
     method,
     request_body: &request_body,
     secret_signing_key: &signing_key,
@@ -86,6 +91,7 @@ async fn create_public_verifying_key_set_test() {
       correct_hooks_signature: &webhook_headers.correct_hooks_signature,
       request_body: &request_body,
     },
+    recipient_id,
     signature_ttl_seconds,
     &public_key_set,
     signature_components.signed_at + 1,
@@ -98,6 +104,7 @@ async fn create_public_verifying_key_set_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn sign_webhook_test() {
+  let recipient_id = "9f1c2a4e-3b7d-4c58-a6e1-52d8b0c47f93".parse().unwrap();
   // values lead to base64 encoding with special characters and uneven bytes (that would be padded if the encoder used padding)
   let target_url = "https://adomain.com/a/path".parse().unwrap();
   let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
@@ -118,6 +125,7 @@ async fn sign_webhook_test() {
     .sign(SignArgs {
       target_url: &target_url,
       webhook_id,
+      recipient_id,
       method,
       request_body: &request_body,
       secret_signing_key: &signing_key,
@@ -136,6 +144,7 @@ async fn sign_webhook_test() {
       correct_hooks_signature: &webhook_headers.correct_hooks_signature,
       request_body: &request_body,
     },
+    recipient_id,
     signature_ttl_seconds,
     &public_key_set,
     signature_components.signed_at + 1,
@@ -148,6 +157,7 @@ async fn sign_webhook_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn verify_webhook_test() {
+  let recipient_id = "9f1c2a4e-3b7d-4c58-a6e1-52d8b0c47f93".parse().unwrap();
   // values lead to base64 encoding with special characters and uneven bytes (that would be padded if the encoder used padding)
   let target_url = "https://adomain.com/a/path".parse().unwrap();
   let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
@@ -167,6 +177,7 @@ async fn verify_webhook_test() {
   let webhook_headers = sign(SignArgs {
     target_url: &target_url,
     webhook_id,
+    recipient_id,
     method,
     request_body: &request_body,
     secret_signing_key: &signing_key,
@@ -185,6 +196,7 @@ async fn verify_webhook_test() {
         correct_hooks_signature: &webhook_headers.correct_hooks_signature,
         request_body: &request_body,
       },
+      recipient_id,
       signature_ttl_seconds,
       &public_key_set,
       signature_components.signed_at + 1,
@@ -198,6 +210,7 @@ async fn verify_webhook_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn identical_signature_test() {
+  let recipient_id = "9f1c2a4e-3b7d-4c58-a6e1-52d8b0c47f93".parse().unwrap();
   // values lead to base64 encoding with special characters and uneven bytes (that would be padded if the encoder used padding)
   let target_url = "https://adomain.com/a/path".parse().unwrap();
   let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
@@ -215,6 +228,7 @@ async fn identical_signature_test() {
   let webhook_headers_base = sign(SignArgs {
     target_url: &target_url,
     webhook_id,
+    recipient_id,
     method,
     request_body: &request_body,
     secret_signing_key: &signing_key,
@@ -224,6 +238,7 @@ async fn identical_signature_test() {
     .sign(SignArgs {
       target_url: &target_url,
       webhook_id,
+      recipient_id,
       method,
       request_body: &request_body,
       secret_signing_key: &signing_key,

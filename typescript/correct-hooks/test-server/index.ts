@@ -30,12 +30,14 @@ interface CreatePublicVerifyingKeySetRequest {
 interface SignRequest {
   targetUrl: string;
   webhookId: string;
+  recipientId: string;
   method: string;
   body: string;
   signingKey: SecretSigningKey;
 }
 
 interface VerifyWithTimeRequest {
+  recipientId: string;
   targetUrl: string;
   method: string;
   correctHooksSignatureComponents: string;
@@ -96,6 +98,7 @@ app.post("/sign", async (c) => {
     const result = sign({
       targetUrl: new URL(request.targetUrl),
       webhookId: request.webhookId,
+      recipientId: request.recipientId,
       method: request.method,
       requestBody: body,
       secretSigningKey: request.signingKey,
@@ -121,6 +124,7 @@ app.post("/verify_with_time", async (c) => {
         correctHooksSignature: request.correctHooksSignature,
         requestBody: body,
       },
+      request.recipientId,
       request.signatureTtlSeconds,
       request.publicVerifyingKeySet,
       request.now,

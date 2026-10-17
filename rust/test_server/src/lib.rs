@@ -46,6 +46,7 @@ pub struct CreatePublicVerifyingKeySetRequest {
 pub struct SignRequest {
   pub target_url: String,
   pub webhook_id: String,
+  pub recipient_id: String,
   pub method: String,
   pub body: String,
   pub signing_key: SecretSigningKey,
@@ -54,6 +55,7 @@ pub struct SignRequest {
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VerifyWithTimeRequest {
+  pub recipient_id: String,
   pub target_url: String,
   pub method: String,
   pub correct_hooks_signature_components: String,
@@ -160,6 +162,7 @@ async fn sign_endpoint(Json(request): Json<SignRequest>) -> Json<ApiResponse<Sig
   let result = sign(SignArgs {
     target_url: &request.target_url.parse().unwrap(),
     webhook_id: request.webhook_id.parse().unwrap(),
+    recipient_id: request.recipient_id.parse().unwrap(),
     method: &request.method,
     request_body: &body,
     secret_signing_key: &request.signing_key,
@@ -196,6 +199,7 @@ async fn verify_with_time_endpoint(
       correct_hooks_signature: &request.correct_hooks_signature,
       request_body: &body,
     },
+    request.recipient_id.parse().unwrap(),
     request.signature_ttl_seconds,
     &request.public_verifying_key_set,
     request.now,

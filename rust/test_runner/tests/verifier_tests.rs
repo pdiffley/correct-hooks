@@ -5,6 +5,7 @@ use uuid::Uuid;
 #[tokio::test]
 #[async_backtrace::framed]
 async fn verifier_key_id_not_found_refresh_test() {
+  let recipient_id = "9f1c2a4e-3b7d-4c58-a6e1-52d8b0c47f93".parse().unwrap();
   let target_url = "https://adomain.com/a/path".parse().unwrap();
   let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
@@ -16,7 +17,7 @@ async fn verifier_key_id_not_found_refresh_test() {
   let test_server_port: u16 = std::env::var("TEST_SERVER_PORT").unwrap().parse().unwrap();
   let test_library = CorrectHooksTestClient::new(test_server_port);
   test_library
-    .register_new_verifier(verifier_id, public_key_set_id, None, None)
+    .register_new_verifier(verifier_id, recipient_id, public_key_set_id, None, None)
     .await;
 
   let signing_key_1 = test_library.generate_secret_signing_key().await;
@@ -32,6 +33,7 @@ async fn verifier_key_id_not_found_refresh_test() {
     .sign(SignArgs {
       target_url: &target_url,
       webhook_id,
+      recipient_id,
       method,
       request_body: &request_body,
       secret_signing_key: &signing_key_1,
@@ -75,6 +77,7 @@ async fn verifier_key_id_not_found_refresh_test() {
     .sign(SignArgs {
       target_url: &target_url,
       webhook_id,
+      recipient_id,
       method,
       request_body: &request_body,
       secret_signing_key: &signing_key_2,
@@ -109,6 +112,7 @@ async fn verifier_key_id_not_found_refresh_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn verifier_key_set_ttl_refresh_test() {
+  let recipient_id = "9f1c2a4e-3b7d-4c58-a6e1-52d8b0c47f93".parse().unwrap();
   let target_url = "https://adomain.com/a/path".parse().unwrap();
   let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
@@ -123,6 +127,7 @@ async fn verifier_key_set_ttl_refresh_test() {
   test_library
     .register_new_verifier(
       verifier_id,
+      recipient_id,
       public_key_set_id,
       None,
       Some(public_verifying_key_set_ttl),
@@ -142,6 +147,7 @@ async fn verifier_key_set_ttl_refresh_test() {
     .sign(SignArgs {
       target_url: &target_url,
       webhook_id,
+      recipient_id,
       method,
       request_body: &request_body,
       secret_signing_key: &signing_key_1,
@@ -185,6 +191,7 @@ async fn verifier_key_set_ttl_refresh_test() {
     .sign(SignArgs {
       target_url: &target_url,
       webhook_id,
+      recipient_id,
       method,
       request_body: &request_body,
       secret_signing_key: &signing_key_1,
@@ -216,6 +223,7 @@ async fn verifier_key_set_ttl_refresh_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn verifier_key_set_ttl_soft_test() {
+  let recipient_id = "9f1c2a4e-3b7d-4c58-a6e1-52d8b0c47f93".parse().unwrap();
   let target_url = "https://adomain.com/a/path".parse().unwrap();
   let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
@@ -230,6 +238,7 @@ async fn verifier_key_set_ttl_soft_test() {
   test_library
     .register_new_verifier(
       verifier_id,
+      recipient_id,
       public_key_set_id,
       None,
       Some(public_verifying_key_set_ttl),
@@ -249,6 +258,7 @@ async fn verifier_key_set_ttl_soft_test() {
     .sign(SignArgs {
       target_url: &target_url,
       webhook_id,
+      recipient_id,
       method,
       request_body: &request_body,
       secret_signing_key: &signing_key_1,
@@ -287,6 +297,7 @@ async fn verifier_key_set_ttl_soft_test() {
     .sign(SignArgs {
       target_url: &target_url,
       webhook_id,
+      recipient_id,
       method,
       request_body: &request_body,
       secret_signing_key: &signing_key_1,

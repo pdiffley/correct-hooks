@@ -62,12 +62,14 @@ class CreatePublicVerifyingKeySetRequest(BaseModel):
 class SignRequest(CamelCaseBaseModel):
   target_url: str
   webhook_id: str
+  recipient_id: str
   method: str
   body: str
   signing_key: SecretSigningKey
 
 
 class VerifyWithTimeRequest(CamelCaseBaseModel):
+  recipient_id: str
   target_url: str
   method: str
   correct_hooks_signature_components: str
@@ -83,6 +85,7 @@ class RegisterPublicVerifyingKeySetRequest(CamelCaseBaseModel):
 
 
 class VerifierConfig(CamelCaseBaseModel):
+  recipient_id: str
   public_verifying_key_set_url: str
   signature_ttl_seconds: int | None
   public_verifying_key_set_ttl_seconds: int | None
@@ -132,6 +135,7 @@ async def sign_endpoint(request: SignRequest) -> ApiResponse[SignatureData]:
   try:
     result = sign(SignArgs(
       webhook_id=uuid.UUID(request.webhook_id),
+      recipient_id=uuid.UUID(request.recipient_id),
       target_url=AnyUrl(request.target_url),
       method=request.method,
       request_body=body,
@@ -159,6 +163,7 @@ async def verify_with_time_endpoint(
         correct_hooks_signature=request.correct_hooks_signature,
         request_body=body,
       ),
+      recipient_id=uuid.UUID(request.recipient_id),
       signature_ttl_seconds=request.signature_ttl_seconds,
       public_verifying_key_set=request.public_verifying_key_set,
       now=request.now,
@@ -198,6 +203,7 @@ async def get_public_verifying_key_set(id: uuid.UUID) -> PublicVerifyingKeySet:
 @app.post("/register_new_verifier/{id}")
 async def register_new_verifier(id: uuid.UUID, request: VerifierConfig) -> None:
   verifiers[id] = Verifier(
+    recipient_id=uuid.UUID(request.recipient_id),
     public_verifying_key_set_url=request.public_verifying_key_set_url,
     signature_ttl_seconds=request.signature_ttl_seconds,
     public_verifying_key_set_ttl_seconds=request.public_verifying_key_set_ttl_seconds,

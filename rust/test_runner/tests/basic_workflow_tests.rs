@@ -5,6 +5,7 @@ use test_runner::test_client::{CorrectHooksTestClient, decode_signature_componen
 #[tokio::test]
 #[async_backtrace::framed]
 async fn sign_verify_test() {
+  let recipient_id = "9f1c2a4e-3b7d-4c58-a6e1-52d8b0c47f93".parse().unwrap();
   let target_url = "https://adomain.com/a/path".parse().unwrap();
   let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
@@ -24,6 +25,7 @@ async fn sign_verify_test() {
     .sign(SignArgs {
       target_url: &target_url,
       webhook_id,
+      recipient_id,
       method,
       request_body: &request_body,
       secret_signing_key: &signing_key,
@@ -43,6 +45,7 @@ async fn sign_verify_test() {
         correct_hooks_signature: &webhook_headers.correct_hooks_signature,
         request_body: &request_body,
       },
+      recipient_id,
       signature_ttl_seconds,
       &public_key_set,
       signature_components.signed_at + 1,
@@ -56,6 +59,7 @@ async fn sign_verify_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn sign_verify_large_body_test() {
+  let recipient_id = "9f1c2a4e-3b7d-4c58-a6e1-52d8b0c47f93".parse().unwrap();
   let target_url = "https://adomain.com/a/path".parse().unwrap();
   let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
@@ -75,6 +79,7 @@ async fn sign_verify_large_body_test() {
     .sign(SignArgs {
       target_url: &target_url,
       webhook_id,
+      recipient_id,
       method,
       request_body: &request_body,
       secret_signing_key: &signing_key,
@@ -94,6 +99,7 @@ async fn sign_verify_large_body_test() {
         correct_hooks_signature: &webhook_headers.correct_hooks_signature,
         request_body: &request_body,
       },
+      recipient_id,
       signature_ttl_seconds,
       &public_key_set,
       signature_components.signed_at + 1,
@@ -107,6 +113,7 @@ async fn sign_verify_large_body_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn multiple_public_keys_test() {
+  let recipient_id = "9f1c2a4e-3b7d-4c58-a6e1-52d8b0c47f93".parse().unwrap();
   let target_url = "https://adomain.com/a/path".parse().unwrap();
   let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
@@ -127,6 +134,7 @@ async fn multiple_public_keys_test() {
     .sign(SignArgs {
       target_url: &target_url,
       webhook_id,
+      recipient_id,
       method,
       request_body: &request_body,
       secret_signing_key: &signing_key_1,
@@ -146,6 +154,7 @@ async fn multiple_public_keys_test() {
         correct_hooks_signature: &webhook_headers_1.correct_hooks_signature,
         request_body: &request_body,
       },
+      recipient_id,
       signature_ttl_seconds,
       &public_key_set,
       signature_components_1.signed_at + 1,
@@ -159,6 +168,7 @@ async fn multiple_public_keys_test() {
     .sign(SignArgs {
       target_url: &target_url,
       webhook_id,
+      recipient_id,
       method,
       request_body: &request_body,
       secret_signing_key: &signing_key_2,
@@ -178,6 +188,7 @@ async fn multiple_public_keys_test() {
         correct_hooks_signature: &webhook_headers_2.correct_hooks_signature,
         request_body: &request_body,
       },
+      recipient_id,
       signature_ttl_seconds,
       &public_key_set,
       signature_components_2.signed_at + 1,
@@ -190,6 +201,7 @@ async fn multiple_public_keys_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn sign_verify_unused_versions_test() {
+  let recipient_id = "9f1c2a4e-3b7d-4c58-a6e1-52d8b0c47f93".parse().unwrap();
   let target_url = "https://adomain.com/a/path".parse().unwrap();
   let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
@@ -211,6 +223,7 @@ async fn sign_verify_unused_versions_test() {
     .sign(SignArgs {
       target_url: &target_url,
       webhook_id,
+      recipient_id,
       method,
       request_body: &request_body,
       secret_signing_key: &signing_key,
@@ -225,6 +238,7 @@ async fn sign_verify_unused_versions_test() {
     .sign(SignArgs {
       target_url: &target_url,
       webhook_id,
+      recipient_id,
       method,
       request_body: &request_body,
       secret_signing_key: &signing_key_alt,
@@ -274,6 +288,7 @@ async fn sign_verify_unused_versions_test() {
         correct_hooks_signature: &joined_webhook_headers.correct_hooks_signature,
         request_body: &request_body,
       },
+      recipient_id,
       signature_ttl_seconds,
       &public_key_set,
       signature_components.signed_at + 1,
@@ -287,7 +302,8 @@ async fn sign_verify_unused_versions_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn sign_verify_special_characters_test() {
-  let target_url = "https://adomain.com/नमस्ते/path".parse().unwrap();;
+  let recipient_id = "9f1c2a4e-3b7d-4c58-a6e1-52d8b0c47f93".parse().unwrap();
+  let target_url = "https://adomain.com/नमस्ते/path".parse().unwrap();
   let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
   let request_body = "{\"testfield\": 234}".to_string().as_bytes().to_vec();
@@ -306,6 +322,7 @@ async fn sign_verify_special_characters_test() {
     .sign(SignArgs {
       target_url: &target_url,
       webhook_id,
+      recipient_id,
       method,
       request_body: &request_body,
       secret_signing_key: &signing_key,
@@ -325,6 +342,7 @@ async fn sign_verify_special_characters_test() {
         correct_hooks_signature: &webhook_headers.correct_hooks_signature,
         request_body: &request_body,
       },
+      recipient_id,
       signature_ttl_seconds,
       &public_key_set,
       signature_components.signed_at + 1,
@@ -338,6 +356,7 @@ async fn sign_verify_special_characters_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn sign_verify_empty_body_test() {
+  let recipient_id = "9f1c2a4e-3b7d-4c58-a6e1-52d8b0c47f93".parse().unwrap();
   let target_url = "https://adomain.com/a/path".parse().unwrap();
   let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
@@ -357,6 +376,7 @@ async fn sign_verify_empty_body_test() {
     .sign(SignArgs {
       target_url: &target_url,
       webhook_id,
+      recipient_id,
       method,
       request_body: &request_body,
       secret_signing_key: &signing_key,
@@ -376,6 +396,7 @@ async fn sign_verify_empty_body_test() {
         correct_hooks_signature: &webhook_headers.correct_hooks_signature,
         request_body: &request_body,
       },
+      recipient_id,
       signature_ttl_seconds,
       &public_key_set,
       signature_components.signed_at + 1,
