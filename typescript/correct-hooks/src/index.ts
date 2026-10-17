@@ -12,6 +12,8 @@ import {
 import { Buffer } from "node:buffer";
 import { Mutex } from "async-mutex";
 
+import * as uuid from "uuid";
+
 /** The signature version produced by this version of the library. */
 export const SIGNATURE_VERSION = "v1";
 const DEFAULT_SIGNATURE_TTL_SECONDS = 300;
@@ -109,7 +111,7 @@ export interface SignatureData {
 }
 
 /** The possible error names of a {@link SignError}. */
-export type SignErrorName = "InvalidMethod" | "InvalidSigningKey";
+export type SignErrorName = "InvalidArgs" | "InvalidSigningKey";
 
 /** Errors thrown by the {@link sign} function. */
 export class SignError extends Error {
@@ -248,10 +250,20 @@ export function createPublicVerifyingKeySet(
  * @throws {@link SignError} if the method or signing key is invalid.
  */
 export function sign(args: SignArgs): SignatureData {
-  const { targetUrl, webhookId, method, requestBody, secretSigningKey } = args;
+  const { webhookId, targetUrl, method, requestBody, secretSigningKey } = args;
+
+  if (!uuid.validate(webhookId) || uuid.version(webhookId) !== 4) {
+    throw new SignError("InvalidArgs")
+  }
+
+  try {
+    new URL(targetUrl)
+  } catch {
+    throw new SignError("InvalidArgs")
+  }
 
   if (!isValidHttpMethod(method)) {
-    throw new SignError("InvalidMethod");
+    throw new SignError("InvalidArgs");
   }
 
   const keyId = secretSigningKey.kid;

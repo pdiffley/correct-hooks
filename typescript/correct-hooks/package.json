@@ -26,7 +26,8 @@
     "build": "yarn tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "async-mutex": "^0.5.0"
+    "async-mutex": "^0.5.0",
+    "uuid": "^14.0.3"
   },
   "devDependencies": {
     "@hono/node-server": "^2.1.4",

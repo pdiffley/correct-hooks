@@ -8,9 +8,9 @@ use uuid::Uuid;
 #[tokio::test]
 #[async_backtrace::framed]
 async fn invalid_target_url_test() {
-  let target_url = "https://adomain.com/a/path";
-  let expected_target_url = "https://adomain.com/a/patha";
-  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba";
+  let target_url = "https://adomain.com/a/path".parse().unwrap();
+  let expected_target_url = "https://adomain.com/a/patha".parse().unwrap();
+  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
   let request_body = "{\"testfield\": 234}".to_string().as_bytes().to_vec();
   let signature_ttl_seconds = 300;
@@ -26,7 +26,7 @@ async fn invalid_target_url_test() {
 
   let webhook_headers = test_library
     .sign(SignArgs {
-      target_url,
+      target_url: &target_url,
       webhook_id,
       method,
       request_body: &request_body,
@@ -41,7 +41,7 @@ async fn invalid_target_url_test() {
   let verify_result = test_library
     .verify_with_time(
       VerifyArgs {
-        target_url: expected_target_url,
+        target_url: &expected_target_url,
         method,
         correct_hooks_signature_components: &webhook_headers.correct_hooks_signature_components,
         correct_hooks_signature: &webhook_headers.correct_hooks_signature,
@@ -59,8 +59,8 @@ async fn invalid_target_url_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn invalid_method_test() {
-  let target_url = "https://adomain.com/a/path";
-  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba";
+  let target_url = "https://adomain.com/a/path".parse().unwrap();
+  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
   let expected_method = "PUT";
   let request_body = "{\"testfield\": 234}".to_string().as_bytes().to_vec();
@@ -77,7 +77,7 @@ async fn invalid_method_test() {
 
   let webhook_headers = test_library
     .sign(SignArgs {
-      target_url,
+      target_url: &target_url,
       webhook_id,
       method,
       request_body: &request_body,
@@ -92,7 +92,7 @@ async fn invalid_method_test() {
   let verify_result = test_library
     .verify_with_time(
       VerifyArgs {
-        target_url,
+        target_url: &target_url,
         method: expected_method,
         correct_hooks_signature_components: &webhook_headers.correct_hooks_signature_components,
         correct_hooks_signature: &webhook_headers.correct_hooks_signature,
@@ -110,8 +110,8 @@ async fn invalid_method_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn expired_signature_test() {
-  let target_url = "https://adomain.com/a/path";
-  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba";
+  let target_url = "https://adomain.com/a/path".parse().unwrap();
+  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
   let request_body = "{\"testfield\": 234}".to_string().as_bytes().to_vec();
   let signature_ttl_seconds = 300;
@@ -127,7 +127,7 @@ async fn expired_signature_test() {
 
   let webhook_headers = test_library
     .sign(SignArgs {
-      target_url,
+      target_url: &target_url,
       webhook_id,
       method,
       request_body: &request_body,
@@ -142,7 +142,7 @@ async fn expired_signature_test() {
   let verify_result = test_library
     .verify_with_time(
       VerifyArgs {
-        target_url,
+        target_url: &target_url,
         method,
         correct_hooks_signature_components: &webhook_headers.correct_hooks_signature_components,
         correct_hooks_signature: &webhook_headers.correct_hooks_signature,
@@ -160,8 +160,8 @@ async fn expired_signature_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn in_the_future_signature_test() {
-  let target_url = "https://adomain.com/a/path";
-  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba";
+  let target_url = "https://adomain.com/a/path".parse().unwrap();
+  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
   let request_body = "{\"testfield\": 234}".to_string().as_bytes().to_vec();
   let signature_ttl_seconds = 300;
@@ -177,7 +177,7 @@ async fn in_the_future_signature_test() {
 
   let webhook_headers = test_library
     .sign(SignArgs {
-      target_url,
+      target_url: &target_url,
       webhook_id,
       method,
       request_body: &request_body,
@@ -192,7 +192,7 @@ async fn in_the_future_signature_test() {
   let verify_result = test_library
     .verify_with_time(
       VerifyArgs {
-        target_url,
+        target_url: &target_url,
         method,
         correct_hooks_signature_components: &webhook_headers.correct_hooks_signature_components,
         correct_hooks_signature: &webhook_headers.correct_hooks_signature,
@@ -210,8 +210,8 @@ async fn in_the_future_signature_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn invalid_signature_components_target_url_test() {
-  let target_url = "https://adomain.com/a/path";
-  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba";
+  let target_url = "https://adomain.com/a/path".parse().unwrap();
+  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
   let request_body = "{\"testfield\": 234}".to_string().as_bytes().to_vec();
   let signature_ttl_seconds = 300;
@@ -227,7 +227,7 @@ async fn invalid_signature_components_target_url_test() {
 
   let webhook_headers = test_library
     .sign(SignArgs {
-      target_url,
+      target_url: &target_url,
       webhook_id,
       method,
       request_body: &request_body,
@@ -242,7 +242,7 @@ async fn invalid_signature_components_target_url_test() {
   let invalid_signature_components = SignatureComponents {
     webhook_id: actual_signature_components.webhook_id,
     method: method.to_string(),
-    target_url: "212345432543".to_string(),
+    target_url: "https://thewrongdomain.com/a/fdsa".parse().unwrap(),
     key_id: actual_signature_components.key_id,
     signed_at: actual_signature_components.signed_at,
   };
@@ -254,7 +254,7 @@ async fn invalid_signature_components_target_url_test() {
   let verify_result = test_library
     .verify_with_time(
       VerifyArgs {
-        target_url,
+        target_url: &target_url,
         method,
         correct_hooks_signature_components: &invalid_signature_components_header_value,
         correct_hooks_signature: &webhook_headers.correct_hooks_signature,
@@ -272,8 +272,8 @@ async fn invalid_signature_components_target_url_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn invalid_signature_components_method_test() {
-  let target_url = "https://adomain.com/a/path";
-  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba";
+  let target_url = "https://adomain.com/a/path".parse().unwrap();
+  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "GET";
   let request_body = "{\"testfield\": 234}".to_string().as_bytes().to_vec();
   let signature_ttl_seconds = 300;
@@ -289,7 +289,7 @@ async fn invalid_signature_components_method_test() {
 
   let webhook_headers = test_library
     .sign(SignArgs {
-      target_url,
+      target_url: &target_url,
       webhook_id,
       method,
       request_body: &request_body,
@@ -304,7 +304,7 @@ async fn invalid_signature_components_method_test() {
   let invalid_signature_components = SignatureComponents {
     webhook_id: actual_signature_components.webhook_id,
     method: "POST".to_string(),
-    target_url: target_url.to_string(),
+    target_url: target_url.clone(),
     key_id: actual_signature_components.key_id,
     signed_at: actual_signature_components.signed_at,
   };
@@ -316,7 +316,7 @@ async fn invalid_signature_components_method_test() {
   let verify_result = test_library
     .verify_with_time(
       VerifyArgs {
-        target_url,
+        target_url: &target_url,
         method,
         correct_hooks_signature_components: &invalid_signature_components_header_value,
         correct_hooks_signature: &webhook_headers.correct_hooks_signature,
@@ -334,8 +334,8 @@ async fn invalid_signature_components_method_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn invalid_signature_components_webhook_id_test() {
-  let target_url = "https://adomain.com/a/path";
-  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba";
+  let target_url = "https://adomain.com/a/path".parse().unwrap();
+  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
   let request_body = "{\"testfield\": 234}".to_string().as_bytes().to_vec();
   let signature_ttl_seconds = 300;
@@ -351,7 +351,7 @@ async fn invalid_signature_components_webhook_id_test() {
 
   let webhook_headers = test_library
     .sign(SignArgs {
-      target_url,
+      target_url: &target_url,
       webhook_id,
       method,
       request_body: &request_body,
@@ -364,8 +364,8 @@ async fn invalid_signature_components_webhook_id_test() {
     decode_signature_components_test(&webhook_headers.correct_hooks_signature_components);
 
   let invalid_signature_components = SignatureComponents {
-    webhook_id: Uuid::new_v4().to_string(),
-    target_url: target_url.to_string(),
+    webhook_id: Uuid::new_v4(),
+    target_url: target_url.clone(),
     method: method.to_string(),
     key_id: actual_signature_components.key_id,
     signed_at: actual_signature_components.signed_at,
@@ -378,7 +378,7 @@ async fn invalid_signature_components_webhook_id_test() {
   let verify_result = test_library
     .verify_with_time(
       VerifyArgs {
-        target_url,
+        target_url: &target_url,
         method,
         correct_hooks_signature_components: &invalid_signature_components_header_value,
         correct_hooks_signature: &webhook_headers.correct_hooks_signature,
@@ -396,8 +396,8 @@ async fn invalid_signature_components_webhook_id_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn invalid_signature_components_signed_at_test() {
-  let target_url = "https://adomain.com/a/path";
-  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba";
+  let target_url = "https://adomain.com/a/path".parse().unwrap();
+  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
   let request_body = "{\"testfield\": 234}".to_string().as_bytes().to_vec();
   let signature_ttl_seconds = 300;
@@ -413,7 +413,7 @@ async fn invalid_signature_components_signed_at_test() {
 
   let webhook_headers = test_library
     .sign(SignArgs {
-      target_url,
+      target_url: &target_url,
       webhook_id,
       method,
       request_body: &request_body,
@@ -440,7 +440,7 @@ async fn invalid_signature_components_signed_at_test() {
   let verify_result = test_library
     .verify_with_time(
       VerifyArgs {
-        target_url,
+        target_url: &target_url,
         method,
         correct_hooks_signature_components: &invalid_signature_components_header_value,
         correct_hooks_signature: &webhook_headers.correct_hooks_signature,
@@ -458,8 +458,8 @@ async fn invalid_signature_components_signed_at_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn invalid_public_key_test() {
-  let target_url = "https://adomain.com/a/path";
-  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba";
+  let target_url = "https://adomain.com/a/path".parse().unwrap();
+  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
   let request_body = "{\"testfield\": 234}".to_string().as_bytes().to_vec();
   let signature_ttl_seconds = 300;
@@ -480,7 +480,7 @@ async fn invalid_public_key_test() {
 
   let webhook_headers = test_library
     .sign(SignArgs {
-      target_url,
+      target_url: &target_url,
       webhook_id,
       method,
       request_body: &request_body,
@@ -495,7 +495,7 @@ async fn invalid_public_key_test() {
   let verify_result = test_library
     .verify_with_time(
       VerifyArgs {
-        target_url,
+        target_url: &target_url,
         method,
         correct_hooks_signature_components: &webhook_headers.correct_hooks_signature_components,
         correct_hooks_signature: &webhook_headers.correct_hooks_signature,
@@ -513,8 +513,8 @@ async fn invalid_public_key_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn missing_public_key_test() {
-  let target_url = "https://adomain.com/a/path";
-  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba";
+  let target_url = "https://adomain.com/a/path".parse().unwrap();
+  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
   let request_body = "{\"testfield\": 234}".to_string().as_bytes().to_vec();
   let signature_ttl_seconds = 300;
@@ -530,7 +530,7 @@ async fn missing_public_key_test() {
 
   let webhook_headers = test_library
     .sign(SignArgs {
-      target_url,
+      target_url: &target_url,
       webhook_id,
       method,
       request_body: &request_body,
@@ -557,7 +557,7 @@ async fn missing_public_key_test() {
   let verify_result = test_library
     .verify_with_time(
       VerifyArgs {
-        target_url,
+        target_url: &target_url,
         method,
         correct_hooks_signature_components: &invalid_signature_components_header_value,
         correct_hooks_signature: &webhook_headers.correct_hooks_signature,
@@ -575,8 +575,8 @@ async fn missing_public_key_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn invalid_sign_args_method_test() {
-  let target_url = "https://adomain.com/a/path";
-  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba";
+  let target_url = "https://adomain.com/a/path".parse().unwrap();
+  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "GETTTTT";
   let request_body = "{\"testfield\": 234}".to_string().as_bytes().to_vec();
 
@@ -587,7 +587,7 @@ async fn invalid_sign_args_method_test() {
 
   let sign_result = test_library
     .sign(SignArgs {
-      target_url,
+      target_url: &target_url,
       webhook_id,
       method,
       request_body: &request_body,
@@ -595,14 +595,14 @@ async fn invalid_sign_args_method_test() {
     })
     .await;
 
-  assert_eq!(sign_result, Err(correct_hooks::SignError::InvalidMethod));
+  assert_eq!(sign_result, Err(correct_hooks::SignError::InvalidArgs));
 }
 
 #[tokio::test]
 #[async_backtrace::framed]
 async fn invalid_sign_args_method_lower_case_test() {
-  let target_url = "https://adomain.com/a/path";
-  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba";
+  let target_url = "https://adomain.com/a/path".parse().unwrap();
+  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "post";
   let request_body = "{\"testfield\": 234}".to_string().as_bytes().to_vec();
 
@@ -613,7 +613,7 @@ async fn invalid_sign_args_method_lower_case_test() {
 
   let sign_result = test_library
     .sign(SignArgs {
-      target_url,
+      target_url: &target_url,
       webhook_id,
       method,
       request_body: &request_body,
@@ -621,5 +621,5 @@ async fn invalid_sign_args_method_lower_case_test() {
     })
     .await;
 
-  assert_eq!(sign_result, Err(correct_hooks::SignError::InvalidMethod));
+  assert_eq!(sign_result, Err(correct_hooks::SignError::InvalidArgs));
 }

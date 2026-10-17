@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
   Ed25519PrivateKey,
   Ed25519PublicKey,
 )
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import UUID4, AnyUrl, BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 SIGNATURE_VERSION = "v1"
@@ -49,7 +49,7 @@ class SecretSigningKey(CamelCaseBaseModel):
   Must be kept secret and should only be held by the signer.
   """
 
-  kid: uuid.UUID = Field(strict=False)
+  kid: UUID4 = Field(strict=False)
   kty: str
   crv: str
   x: str
@@ -57,7 +57,7 @@ class SecretSigningKey(CamelCaseBaseModel):
 
 
 class _PublicJwk(CamelCaseBaseModel):
-  kid: uuid.UUID = Field(strict=False)
+  kid: UUID4 = Field(strict=False)
   kty: str
   crv: str
   x: str
@@ -70,16 +70,23 @@ class PublicVerifyingKeySet(CamelCaseBaseModel):
 
 
 class _SignatureComponents(CamelCaseBaseModel):
-  webhook_id: str
-  target_url: str
+  webhook_id: UUID4 = Field(strict=False)
+  target_url: AnyUrl = Field(strict=False)
   method: str
-  key_id: uuid.UUID = Field(strict=False)
+  key_id: UUID4 = Field(strict=False)
   signed_at: int
 
 
 class InvalidKeyFound(Exception):
   pass
 
+
+class SignArgs(CamelCaseBaseModel):
+  webhook_id: UUID4 = Field(strict=False)
+  target_url: AnyUrl = Field(strict=False)
+  method: str
+  request_body: bytes
+  secret_signing_key: SecretSigningKey
 
 class SignatureData(CamelCaseBaseModel):
   """Header values to set on the webhook request.
@@ -94,7 +101,7 @@ class SignatureData(CamelCaseBaseModel):
   """Set the header `correct-hooks-signature` to this value."""
 
 
-class InvalidMethod(Exception):
+class InvalidArgs(Exception):
   pass
 
 
@@ -102,10 +109,18 @@ class InvalidSigningKey(Exception):
   pass
 
 
+class VerifyArgs(CamelCaseBaseModel):
+  target_url: AnyUrl = Field(strict=False)
+  method: str
+  correct_hooks_signature_components: str
+  correct_hooks_signature: str
+  request_body: bytes
+
+
 class VerifiedData(CamelCaseBaseModel):
   """Validated request data."""
 
-  webhook_id: str
+  webhook_id: UUID4
   """The validated `webhook_id` for the request. These id's can be put in a shared cache
   by the webhook consumer and checked against for the highest level of replay protection.
   """
@@ -180,12 +195,7 @@ def create_public_verifying_key_set(
 
 
 def sign(
-  *,
-  webhook_id: str,
-  target_url: str,
-  method: str,
-  request_body: bytes,
-  secret_signing_key: SecretSigningKey,
+  args: SignArgs
 ) -> SignatureData:
   """Creates a signature for a webhook request and returns the signature headers that should be set on the request.
 
@@ -211,16 +221,16 @@ def sign(
     InvalidMethod
     InvalidSigningKey
   """
-  if not is_valid_http_method(method):
-    raise InvalidMethod
+  if not is_valid_http_method(args.method):
+    raise InvalidArgs
 
-  key_id = secret_signing_key.kid
+  key_id = args.secret_signing_key.kid
   signed_at = _seconds_since_unix_epoch()
 
   signature_components = _SignatureComponents(
-    webhook_id=webhook_id,
-    target_url=target_url,
-    method=method,
+    webhook_id=args.webhook_id,
+    target_url=args.target_url,
+    method=args.method,
     key_id=key_id,
     signed_at=signed_at,
   )
@@ -229,12 +239,12 @@ def sign(
   signature_components_header = _version_header_value(encoded_signature_components)
 
   try:
-    secret_key_bytes = decode_base64(secret_signing_key.d)
+    secret_key_bytes = decode_base64(args.secret_signing_key.d)
     signing_key = Ed25519PrivateKey.from_private_bytes(secret_key_bytes)
   except Exception as e:
     raise InvalidSigningKey from e
 
-  signature_message = _construct_signature_message(signature_components, request_body)
+  signature_message = _construct_signature_message(signature_components, args.request_body)
 
   signature = signing_key.sign(signature_message)
   signature_base64 = _encode_base64(signature)
@@ -292,12 +302,7 @@ class Verifier:
 
   async def verify(
     self,
-    *,
-    target_url: str,
-    method: str,
-    correct_hooks_signature_components: str,
-    correct_hooks_signature: str,
-    request_body: bytes,
+    args: VerifyArgs
   ) -> VerifiedData:
     """Verifies a request and returns validated information from the Correct Hooks request headers.
 
@@ -322,22 +327,13 @@ class Verifier:
     """
     now = _seconds_since_unix_epoch()
     return await self.verify_with_time(
-      target_url=target_url,
-      method=method,
-      correct_hooks_signature_components=correct_hooks_signature_components,
-      correct_hooks_signature=correct_hooks_signature,
-      request_body=request_body,
+      args=args,
       now=now,
     )
 
   async def verify_with_time(
     self,
-    *,
-    target_url: str,
-    method: str,
-    correct_hooks_signature_components: str,
-    correct_hooks_signature: str,
-    request_body: bytes,
+    args: VerifyArgs,
     now: int,
   ) -> VerifiedData:
     """The same as `Verifier.verify` but with the current time provided by the caller, which
@@ -357,11 +353,7 @@ class Verifier:
         pass
     try:
       return verify_with_time(
-        target_url=target_url,
-        method=method,
-        correct_hooks_signature_components=correct_hooks_signature_components,
-        correct_hooks_signature=correct_hooks_signature,
-        request_body=request_body,
+        args=args,
         signature_ttl_seconds=self._signature_ttl_seconds,
         public_verifying_key_set=self._public_verifying_key_set,
         now=now,
@@ -372,11 +364,7 @@ class Verifier:
       except Exception:  # noqa
         raise PublicVerifyingKeyRetrievalFailed()
       return verify_with_time(
-        target_url=target_url,
-        method=method,
-        correct_hooks_signature_components=correct_hooks_signature_components,
-        correct_hooks_signature=correct_hooks_signature,
-        request_body=request_body,
+        args=args,
         signature_ttl_seconds=self._signature_ttl_seconds,
         public_verifying_key_set=self._public_verifying_key_set,
         now=now,
@@ -384,32 +372,18 @@ class Verifier:
 
   def verify_sync(
     self,
-    *,
-    target_url: str,
-    method: str,
-    correct_hooks_signature_components: str,
-    correct_hooks_signature: str,
-    request_body: bytes,
+    args: VerifyArgs
   ) -> VerifiedData:
     """A synchronous version of `Verifier.verify`."""
     now = _seconds_since_unix_epoch()
     return self.verify_with_time_sync(
-      target_url=target_url,
-      method=method,
-      correct_hooks_signature_components=correct_hooks_signature_components,
-      correct_hooks_signature=correct_hooks_signature,
-      request_body=request_body,
+      args=args,
       now=now,
     )
 
   def verify_with_time_sync(
     self,
-    *,
-    target_url: str,
-    method: str,
-    correct_hooks_signature_components: str,
-    correct_hooks_signature: str,
-    request_body: bytes,
+    args: VerifyArgs,
     now: int,
   ) -> VerifiedData:
     """A synchronous version of `Verifier.verify_with_time`."""
@@ -424,11 +398,7 @@ class Verifier:
         pass
     try:
       return verify_with_time(
-        target_url=target_url,
-        method=method,
-        correct_hooks_signature_components=correct_hooks_signature_components,
-        correct_hooks_signature=correct_hooks_signature,
-        request_body=request_body,
+        args=args,
         signature_ttl_seconds=self._signature_ttl_seconds,
         public_verifying_key_set=self._public_verifying_key_set,
         now=now,
@@ -439,11 +409,7 @@ class Verifier:
       except Exception:  # noqa
         raise PublicVerifyingKeyRetrievalFailed()
       result = verify_with_time(
-        target_url=target_url,
-        method=method,
-        correct_hooks_signature_components=correct_hooks_signature_components,
-        correct_hooks_signature=correct_hooks_signature,
-        request_body=request_body,
+        args=args,
         signature_ttl_seconds=self._signature_ttl_seconds,
         public_verifying_key_set=self._public_verifying_key_set,
         now=now,
@@ -478,11 +444,7 @@ class Verifier:
 
 def verify_with_time(
   *,
-  target_url: str,
-  method: str,
-  correct_hooks_signature_components: str,
-  correct_hooks_signature: str,
-  request_body: bytes,
+  args: VerifyArgs,
   signature_ttl_seconds: int,
   public_verifying_key_set: PublicVerifyingKeySet,
   now: int,
@@ -490,7 +452,7 @@ def verify_with_time(
   """This function is only public for internal testing purposes and will be made private in a future version of this library."""
 
   signature_components_encoded = _split_versioned_header(
-    correct_hooks_signature_components
+    args.correct_hooks_signature_components
   ).get(SIGNATURE_VERSION)
   if signature_components_encoded is None:
     raise InvalidSignature()
@@ -517,9 +479,9 @@ def verify_with_time(
   except Exception as e:
     raise InvalidPublicVerifyingKey() from e
 
-  signature_message = _construct_signature_message(signature_components, request_body)
+  signature_message = _construct_signature_message(signature_components, args.request_body)
 
-  signature_encoded = _split_versioned_header(correct_hooks_signature).get(
+  signature_encoded = _split_versioned_header(args.correct_hooks_signature).get(
     SIGNATURE_VERSION
   )
   if signature_encoded is None:
@@ -535,10 +497,10 @@ def verify_with_time(
   except Exception as e:
     raise InvalidSignature() from e
 
-  if target_url != signature_components.target_url:
+  if args.target_url != signature_components.target_url:
     raise InvalidSignature()
 
-  if method != signature_components.method:
+  if args.method != signature_components.method:
     raise InvalidSignature()
 
   if (
@@ -573,8 +535,8 @@ def _split_versioned_header(header: str) -> dict[str, str]:
 
 
 def _encode_signature_components(signature_components: _SignatureComponents) -> str:
-  webhook_id_base64 = _encode_base64_from_string(signature_components.webhook_id)
-  target_url_base64 = _encode_base64_from_string(signature_components.target_url)
+  webhook_id_base64 = _encode_base64_from_string(str(signature_components.webhook_id))
+  target_url_base64 = _encode_base64_from_string(str(signature_components.target_url))
   method_base64 = _encode_base64_from_string(signature_components.method)
   key_id_base64 = _encode_base64_from_string(str(signature_components.key_id))
   signed_at_base64 = _encode_base64_from_string(str(signature_components.signed_at))
@@ -588,14 +550,14 @@ def _decode_signature_components(
   components = list(encoded_signature_components.split("."))
   if len(components) != 5:
     raise ValueError("Invalid component count")
-  webhook_id = _decode_base64_to_string(components[0])
+  webhook_id = uuid.UUID(_decode_base64_to_string(components[0]))
   target_url = _decode_base64_to_string(components[1])
   method = _decode_base64_to_string(components[2])
   key_id = uuid.UUID(_decode_base64_to_string(components[3]))
   signed_at = int(_decode_base64_to_string(components[4]))
   return _SignatureComponents(
     webhook_id=webhook_id,
-    target_url=target_url,
+    target_url=AnyUrl(target_url),
     method=method,
     key_id=key_id,
     signed_at=signed_at,

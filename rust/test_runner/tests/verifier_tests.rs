@@ -5,8 +5,8 @@ use uuid::Uuid;
 #[tokio::test]
 #[async_backtrace::framed]
 async fn verifier_key_id_not_found_refresh_test() {
-  let target_url = "https://adomain.com/a/path";
-  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba";
+  let target_url = "https://adomain.com/a/path".parse().unwrap();
+  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
   let request_body = "{\"testfield\": 234}".to_string().as_bytes().to_vec();
 
@@ -30,7 +30,7 @@ async fn verifier_key_id_not_found_refresh_test() {
 
   let webhook_headers_1 = test_library
     .sign(SignArgs {
-      target_url,
+      target_url: &target_url,
       webhook_id,
       method,
       request_body: &request_body,
@@ -46,7 +46,7 @@ async fn verifier_key_id_not_found_refresh_test() {
     .verify_with_time_with_verifier(
       verifier_id,
       VerifyArgs {
-        target_url,
+        target_url: &target_url,
         method,
         correct_hooks_signature_components: &webhook_headers_1.correct_hooks_signature_components,
         correct_hooks_signature: &webhook_headers_1.correct_hooks_signature,
@@ -73,7 +73,7 @@ async fn verifier_key_id_not_found_refresh_test() {
 
   let webhook_headers_2 = test_library
     .sign(SignArgs {
-      target_url,
+      target_url: &target_url,
       webhook_id,
       method,
       request_body: &request_body,
@@ -89,7 +89,7 @@ async fn verifier_key_id_not_found_refresh_test() {
     .verify_with_time_with_verifier(
       verifier_id,
       VerifyArgs {
-        target_url,
+        target_url: &target_url,
         method,
         correct_hooks_signature_components: &webhook_headers_2.correct_hooks_signature_components,
         correct_hooks_signature: &webhook_headers_2.correct_hooks_signature,
@@ -109,8 +109,8 @@ async fn verifier_key_id_not_found_refresh_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn verifier_key_set_ttl_refresh_test() {
-  let target_url = "https://adomain.com/a/path";
-  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba";
+  let target_url = "https://adomain.com/a/path".parse().unwrap();
+  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
   let request_body = "{\"testfield\": 234}".to_string().as_bytes().to_vec();
 
@@ -140,7 +140,7 @@ async fn verifier_key_set_ttl_refresh_test() {
 
   let webhook_headers_1 = test_library
     .sign(SignArgs {
-      target_url,
+      target_url: &target_url,
       webhook_id,
       method,
       request_body: &request_body,
@@ -156,7 +156,7 @@ async fn verifier_key_set_ttl_refresh_test() {
     .verify_with_time_with_verifier(
       verifier_id,
       VerifyArgs {
-        target_url,
+        target_url: &target_url,
         method,
         correct_hooks_signature_components: &webhook_headers_1.correct_hooks_signature_components,
         correct_hooks_signature: &webhook_headers_1.correct_hooks_signature,
@@ -183,7 +183,7 @@ async fn verifier_key_set_ttl_refresh_test() {
 
   let webhook_headers_old_key = test_library
     .sign(SignArgs {
-      target_url,
+      target_url: &target_url,
       webhook_id,
       method,
       request_body: &request_body,
@@ -199,7 +199,7 @@ async fn verifier_key_set_ttl_refresh_test() {
     .verify_with_time_with_verifier(
       verifier_id,
       VerifyArgs {
-        target_url,
+        target_url: &target_url,
         method,
         correct_hooks_signature_components: &webhook_headers_old_key
           .correct_hooks_signature_components,
@@ -216,8 +216,8 @@ async fn verifier_key_set_ttl_refresh_test() {
 #[tokio::test]
 #[async_backtrace::framed]
 async fn verifier_key_set_ttl_soft_test() {
-  let target_url = "https://adomain.com/a/path";
-  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba";
+  let target_url = "https://adomain.com/a/path".parse().unwrap();
+  let webhook_id = "6c22e7f3-753e-4076-8bf2-bd923dbdd6ba".parse().unwrap();
   let method = "POST";
   let request_body = "{\"testfield\": 234}".to_string().as_bytes().to_vec();
 
@@ -247,7 +247,7 @@ async fn verifier_key_set_ttl_soft_test() {
 
   let webhook_headers_1 = test_library
     .sign(SignArgs {
-      target_url,
+      target_url: &target_url,
       webhook_id,
       method,
       request_body: &request_body,
@@ -263,7 +263,7 @@ async fn verifier_key_set_ttl_soft_test() {
     .verify_with_time_with_verifier(
       verifier_id,
       VerifyArgs {
-        target_url,
+        target_url: &target_url,
         method,
         correct_hooks_signature_components: &webhook_headers_1.correct_hooks_signature_components,
         correct_hooks_signature: &webhook_headers_1.correct_hooks_signature,
@@ -285,7 +285,7 @@ async fn verifier_key_set_ttl_soft_test() {
 
   let webhook_headers_old_key = test_library
     .sign(SignArgs {
-      target_url,
+      target_url: &target_url,
       webhook_id,
       method,
       request_body: &request_body,
@@ -301,7 +301,7 @@ async fn verifier_key_set_ttl_soft_test() {
     .verify_with_time_with_verifier(
       verifier_id,
       VerifyArgs {
-        target_url,
+        target_url: &target_url,
         method,
         correct_hooks_signature_components: &webhook_headers_old_key
           .correct_hooks_signature_components,

@@ -10,6 +10,7 @@ use ed25519_dalek::{
 };
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
+use url::Url;
 use uuid::Uuid;
 
 /// The signature version produced by this version of the library.
@@ -47,8 +48,8 @@ pub struct PublicVerifyingKeySet {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureComponents {
-  pub webhook_id: String,
-  pub target_url: String,
+  pub webhook_id: Uuid,
+  pub target_url: Url,
   pub method: String,
   pub key_id: Uuid,
   pub signed_at: u64,
@@ -68,11 +69,11 @@ pub struct SignArgs<'a> {
   ///
   /// This id should be unique for the event triggering the webhook, and should
   /// be reused for any delivery retries.
-  pub webhook_id: &'a str,
+  pub webhook_id: Uuid,
   /// The url the webhook is being sent to.
   ///
   /// Must be the exact url string provided by the webhook consumer.
-  pub target_url: &'a str,
+  pub target_url: &'a Url,
   /// The HTTP method the webhook will be sent with.
   pub method: &'a str,
   /// The exact body of the webhook request as bytes.
@@ -99,7 +100,7 @@ pub struct SignatureData {
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum SignError {
-  InvalidMethod,
+  InvalidArgs,
   InvalidSigningKey,
 }
 
@@ -110,7 +111,7 @@ pub struct VerifyArgs<'a> {
   ///
   /// `target_url` needs to be the exact string given to the webhook provider,
   /// preferably retrieved from an environment variable or hardcoded.
-  pub target_url: &'a str,
+  pub target_url: &'a Url,
   /// The HTTP method the request was sent with. Can be extracted from the request.
   pub method: &'a str,
   /// The value from the request's `correct-hooks-signature-components` header.
@@ -127,7 +128,7 @@ pub struct VerifyArgs<'a> {
 pub struct VerifiedData {
   /// The validated `webhook_id` for the request. These id's can be put in a shared cache
   /// by the webhook consumer and checked against for the highest level of replay protection.
-  pub webhook_id: String,
+  pub webhook_id: Uuid,
 }
 
 /// Errors returned by [`Verifier::verify`]. Receiving any of these errors indicates that a request
@@ -204,16 +205,21 @@ pub fn sign(args: SignArgs<'_>) -> Result<SignatureData, SignError> {
     request_body,
     secret_signing_key,
   } = args;
+
+  if webhook_id.get_version_num() != 4 {
+    return Err(SignError::InvalidArgs)
+  } 
+
   if !is_valid_http_method(method) {
-    return Err(SignError::InvalidMethod);
+    return Err(SignError::InvalidArgs);
   }
 
   let key_id = secret_signing_key.kid;
   let signed_at = seconds_since_unix_epoch();
 
   let signature_components = SignatureComponents {
-    webhook_id: webhook_id.to_string(),
-    target_url: target_url.to_string(),
+    webhook_id: webhook_id,
+    target_url: target_url.clone(),
     method: method.to_string(),
     key_id,
     signed_at,
@@ -464,7 +470,7 @@ pub fn verify_with_time(
     return Err(VerifyError::InvalidSignature);
   }
 
-  if target_url != signature_components.target_url {
+  if target_url != &signature_components.target_url {
     return Err(VerifyError::InvalidSignature);
   }
 
@@ -519,8 +525,8 @@ pub fn split_versioned_header(header: &str) -> HashMap<String, String> {
 
 /// This function is only public for internal testing purposes and will be made private in a future version of this library.
 pub fn encode_signature_components(signature_components: &SignatureComponents) -> String {
-  let webhook_id_base64 = encode_base64_from_string(&signature_components.webhook_id);
-  let target_url_base64 = encode_base64_from_string(&signature_components.target_url);
+  let webhook_id_base64 = encode_base64_from_string(&signature_components.webhook_id.to_string());
+  let target_url_base64 = encode_base64_from_string(signature_components.target_url.as_str());
   let method_base64 = encode_base64_from_string(&signature_components.method);
   let key_id_base64 = encode_base64_from_string(&signature_components.key_id.to_string());
   let signed_at_base64 = encode_base64_from_string(&signature_components.signed_at.to_string());
@@ -539,12 +545,16 @@ pub fn decode_signature_components(
   if components.len() != 5 {
     return Err("Invalid component count".to_owned());
   }
-  let webhook_id = decode_base64_to_string(components[0])?;
-  let target_url = decode_base64_to_string(components[1])?;
+  let webhook_id = decode_base64_to_string(components[0])?
+    .parse()
+    .map_err(|_| "invalid webhook_id".to_owned())?;
+  let target_url = decode_base64_to_string(components[1])?
+    .parse()
+    .map_err(|_| "invalid target_url".to_owned())?;
   let method = decode_base64_to_string(components[2])?;
   let key_id = decode_base64_to_string(components[3])?
     .parse()
-    .map_err(|_| "invalid key id".to_owned())?;
+    .map_err(|_| "invalid key_id".to_owned())?;
   let signed_at = decode_base64_to_string(components[4])?
     .parse()
     .map_err(|_| "invalid timestamp".to_owned())?;

@@ -108,7 +108,7 @@ impl CorrectHooksTestClient {
       .unwrap();
     if let Some(error) = response.error {
       let error = match error.as_str() {
-        "InvalidMethod" => SignError::InvalidMethod,
+        "InvalidArgs" => SignError::InvalidArgs,
         "InvalidSigningKey" => SignError::InvalidSigningKey,
         _ => panic!("found unexpected error"),
       };

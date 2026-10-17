@@ -158,8 +158,8 @@ async fn create_public_verifying_key_set_endpoint(
 async fn sign_endpoint(Json(request): Json<SignRequest>) -> Json<ApiResponse<SignatureData>> {
   let body = decode_base64(&request.body).unwrap();
   let result = sign(SignArgs {
-    target_url: &request.target_url,
-    webhook_id: &request.webhook_id,
+    target_url: &request.target_url.parse().unwrap(),
+    webhook_id: request.webhook_id.parse().unwrap(),
     method: &request.method,
     request_body: &body,
     secret_signing_key: &request.signing_key,
@@ -173,7 +173,7 @@ async fn sign_endpoint(Json(request): Json<SignRequest>) -> Json<ApiResponse<Sig
       output: None,
       error: Some(
         match err {
-          SignError::InvalidMethod => "InvalidMethod",
+          SignError::InvalidArgs => "InvalidArgs",
           SignError::InvalidSigningKey => "InvalidSigningKey",
           _ => panic!("Encountered unexpected error"),
         }
@@ -190,7 +190,7 @@ async fn verify_with_time_endpoint(
   let body = decode_base64(&request.body).unwrap();
   let result = verify_with_time(
     VerifyArgs {
-      target_url: &request.target_url,
+      target_url: &request.target_url.parse().unwrap(),
       method: &request.method,
       correct_hooks_signature_components: &request.correct_hooks_signature_components,
       correct_hooks_signature: &request.correct_hooks_signature,
@@ -277,7 +277,7 @@ async fn verify_with_time_with_verifier(
   let result = verifier
     .verify_with_time(
       VerifyArgs {
-        target_url: &request.target_url,
+        target_url: &request.target_url.parse().unwrap(),
         method: &request.method,
         correct_hooks_signature_components: &request.correct_hooks_signature_components,
         correct_hooks_signature: &request.correct_hooks_signature,
